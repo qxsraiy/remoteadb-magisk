@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<permissions>
+    <privapp-permissions package="com.fujiang.remotelock">
+        <permission name="android.permission.STATUS_BAR"/>
+    </privapp-permissions>
+</permissions>

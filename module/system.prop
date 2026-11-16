@@ -1,0 +1,5 @@
+persist.sys.usb.config=adb
+persist.service.adb.enable=1
+service.adb.tcp.port=5555
+persist.adb.tcp.port=5555
+ro.debuggable=1
