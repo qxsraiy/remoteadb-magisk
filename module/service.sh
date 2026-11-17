@@ -61,21 +61,8 @@ done
 
 # ========== 守护2.5: 主控投屏(scrcpy-server)出现才亮屏 ==========
 (
-SCR=0
-while true; do
-  FOUND=0
-  for p in /proc/[0-9]*/cmdline; do
-    if tr '\0' ' ' < $p 2>/dev/null | grep -q 'genymobile.scrcpy'; then FOUND=1; break; fi
-  done
-  if [ $FOUND -eq 1 ] && [ $SCR -eq 0 ]; then
-    input keyevent 224 2>/dev/null   # 主控开始投屏, 点亮屏幕
-    input keyevent 82 2>/dev/null    # 滑开残余锁屏直通桌面
-    SCR=1
-  elif [ $FOUND -eq 0 ]; then
-    SCR=0
-  fi
-  sleep 2
-done
+# scrcpy 投屏画面由主控端 --turn-screen-off 保证(物理屏保持熄灭),
+# 此处不再主动点亮被控机屏幕
 ) &
 
 # ========== 守护3: adbd 5555 保活 ==========

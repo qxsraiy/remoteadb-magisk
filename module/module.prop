@@ -1,6 +1,6 @@
 id=remoteadb
 name=远程ADB-固定端口免授权
 author=富江
-version=v3.6
-versionCode=360
+version=v3.7
+versionCode=370
 description=ADB固定5555免授权+自绘九宫格锁屏:物理亮屏即锁,adb连接自动解除。图案见pattern.txt
