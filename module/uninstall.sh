@@ -8,6 +8,4 @@ resetprop persist.adb.tcp.port "" 2>/dev/null
 resetprop service.adb.tcp.port "" 2>/dev/null
 cmd tethering stop usb 2>/dev/null
 setprop sys.usb.config mtp,adb 2>/dev/null
-iptables -D INPUT -p tcp --dport 5555 -j REMOTEADB 2>/dev/null
-iptables -F REMOTEADB 2>/dev/null; iptables -X REMOTEADB 2>/dev/null
 rm -f /data/misc/adb/adb_keys 2>/dev/null

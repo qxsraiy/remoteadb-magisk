@@ -36,8 +36,6 @@
 | `LOCKSCREEN` | 1 | 1=自绘锁屏接管;0=不碰系统锁屏,恢复系统原本行为 |
 | `USB_TETHER` | 0 | 1=开机自动 USB 网络共享(RNDIS), 由特权 app 调 TetheringManager 实现 |
 | `ADB_PORT` | 5555 | 无线调试端口,改了要同步改转发规则 |
-| `ADB_FIREWALL` | 1 | 1=用 iptables 白名单限制来源(强烈建议开) |
-| `ADB_ALLOWED_CIDRS` | `192.168.2.0/24 127.0.0.1/32` | 允许访问 ADB 端口的网段,空格分隔 |
 | `KEEPALIVE` | 60 | adbd 保活巡检间隔(秒) |
 
 ## USB 网络共享实现说明
@@ -46,7 +44,7 @@ Android 没有公开的 shell 命令能可靠开启 USB 共享(`cmd tethering st
 
 1. 守护脚本把 USB 功能切到 `rndis,adb`(优先 `svc usb setFunctions`,回退 `setprop sys.usb.config`,带 8 次重试防 ROM 抢回)
 2. 广播 `com.fujiang.remotelock.USB_TETHER` 给特权 app,由它调用公开 API `TetheringManager.startTethering(TETHERING_USB)`
-3. 60 秒巡检,掉线自动重开
+3. **看门狗**: 每 30 秒巡检 `sys.usb.state` 是否含 rndis、共享会话是否 `TetheredState`,任一掉线立即重开; 连续 3 次修不好会退避到 5 分钟,避免狂切 USB 影响 adb
 
 实测 ColorOS 15: `rndis0` 进入 `TetheredState`,对端(电脑/路由器)自动获得 `192.168.233.x` 地址。
 
@@ -87,18 +85,9 @@ adb connect <手机IP>:5555
 
 > `LOCKSCREEN=0` 时图案不生效。
 
-## 安全模型(必读)
+## 安全提示
 
-**密钥在这台 ROM 上不一定是防线。** 实测 ColorOS 15 的 adbd 由 init 以 `--root_seclabel=u:r:su:s0`(root 模式)启动,日志明确打印 `authentication not required` —— 此模式下 AOSP 直接跳过 RSA 鉴权,**任何能连上 5555 的机器都能进 shell**(非 root,但能截图/注入输入/读写 sdcard)。
-
-因此本模块加了第二道防线:**iptables 来源白名单**(`ADB_FIREWALL=1`):
-
-- 只放行 `ADB_ALLOWED_CIDRS` 里列出的网段,其余全部 DROP
-- 默认只允许本机网段 `192.168.2.0/24` + loopback,**请按自己的网络改**
-- 用 Tailscale 组网就加 `100.64.0.0/10`;用 frp 隧道则把隧道源地址放进来
-- 白名单一条都没解析成功时会**自动放弃限制**而不是自锁(并有日志)
-
-如果手机的 adbd 走正常模式(大多数 ROM),密钥鉴权仍生效,白名单则是额外一层。
+实测 ColorOS 15 的 adbd 由 init 以 `--root_seclabel=u:r:su:s0`(root 模式)启动,日志打印 `authentication not required` —— **该 ROM 会跳过 RSA 鉴权,adb 私钥不构成防线**。这与本模块无关,是 ROM 自身行为。请自行评估暴露 5555 端口的风险(建议只在可信网络/隧道内使用)。
 
 ## 适用场景
 
@@ -118,7 +107,7 @@ adb connect <手机IP>:5555
 
 | 环境 | 状态 |
 |---|---|
-| ColorOS 15 (OPPO, Android 15, 1080x2400) | ✅ 实测通过(注意: 该 ROM adbd 为 root 模式, 跳过密钥鉴权, 必须靠 ADB_FIREWALL) |
+| ColorOS 15 (OPPO, Android 15, 1080x2400) | ✅ 实测通过(该 ROM adbd 为 root 模式, 跳过密钥鉴权) |
 | Android 8+ 其他 ROM | 理论可用(悬浮窗+root 方案不挑系统) |
 | MIUI / HyperOS | 未实测;窗口尺寸异常时查 LockService 的 getRealMetrics 逻辑 |
 | Pixel / 三星 | 未实测;FBE/生物解锁绑定更严,行为可能不同 |

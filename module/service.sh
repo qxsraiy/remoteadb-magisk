@@ -10,8 +10,6 @@ LOCKSCREEN=$(getconf LOCKSCREEN); [ -z "$LOCKSCREEN" ] && LOCKSCREEN=1
 USB_TETHER=$(getconf USB_TETHER); [ -z "$USB_TETHER" ] && USB_TETHER=0
 ADB_PORT=$(getconf ADB_PORT);     [ -z "$ADB_PORT" ] && ADB_PORT=5555
 KEEPALIVE=$(getconf KEEPALIVE);   [ -z "$KEEPALIVE" ] && KEEPALIVE=60
-ADB_FIREWALL=$(getconf ADB_FIREWALL); [ -z "$ADB_FIREWALL" ] && ADB_FIREWALL=1
-ADB_ALLOWED_CIDRS=$(getconf ADB_ALLOWED_CIDRS); [ -z "$ADB_ALLOWED_CIDRS" ] && ADB_ALLOWED_CIDRS="192.168.2.0/24 127.0.0.1/32"
 
 # ---------- ADB 基础 ----------
 settings put global adb_enabled 1
@@ -45,34 +43,12 @@ else
   am force-stop $PKG 2>/dev/null
 fi
 
-# ---------- 端口访问控制(iptables 白名单) ----------
-apply_firewall() {
-  iptables -D INPUT -p tcp --dport $ADB_PORT -j REMOTEADB 2>/dev/null
-  iptables -F REMOTEADB 2>/dev/null
-  iptables -X REMOTEADB 2>/dev/null
-  iptables -N REMOTEADB 2>/dev/null || return 0
-  iptables -A REMOTEADB -i lo -j ACCEPT
-  iptables -A REMOTEADB -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-  OK=0
-  for c in $ADB_ALLOWED_CIDRS; do
-    iptables -A REMOTEADB -s "$c" -j ACCEPT 2>/dev/null && OK=$((OK+1))
-  done
-  if [ $OK -eq 0 ]; then
-    # 白名单解析失败, 宁可不限制也不要自锁
-    iptables -F REMOTEADB 2>/dev/null; iptables -X REMOTEADB 2>/dev/null
-    return 0
-  fi
-  iptables -A REMOTEADB -j DROP
-  iptables -I INPUT -p tcp --dport $ADB_PORT -j REMOTEADB
-}
-
 # ---------- USB 网络共享 ----------
 usb_tether_on() {
   # ROM 可能把 USB 功能改回别的组合, 重试直到 rndis 生效
   i=0
   while [ $i -lt 8 ]; do
     getprop sys.usb.state 2>/dev/null | grep -q rndis && break
-    # ColorOS 只认 svc 切换(会短暂重启 adbd), 其它 ROM 用 setprop 即可
     svc usb setFunctions rndis,adb 2>/dev/null || setprop sys.usb.config rndis,adb 2>/dev/null
     sleep 3
     i=$((i+1))
@@ -92,16 +68,25 @@ usb_tether_on() {
 if [ "$USB_TETHER" = "1" ]; then
   sleep 8   # 等系统 USB 服务就绪
   usb_tether_on
-  # 每 60 秒确保共享仍开着
+  # ---------- 看门狗: 30 秒巡检, rndis 状态或共享会话掉任一即重开 ----------
   (
+  FAIL=0
   while true; do
-    sleep 60
-    usb_tether_on
+    sleep 30
+    NEED=0
+    getprop sys.usb.state 2>/dev/null | grep -q rndis || NEED=1
+    dumpsys tethering 2>/dev/null | grep -q 'TetheredState' || NEED=1
+    if [ $NEED -eq 1 ]; then
+      usb_tether_on
+      # 连续 3 次修不好就放慢到 5 分钟, 避免狂切 USB 影响 adb
+      FAIL=$((FAIL+1))
+      [ $FAIL -ge 3 ] && { sleep 270; FAIL=0; }
+    else
+      FAIL=0
+    fi
   done
   ) &
 fi
-
-[ "$ADB_FIREWALL" = "1" ] && { sleep 10; apply_firewall; }
 
 adb_connected() {
   netstat -ant 2>/dev/null | grep ":$ADB_PORT " | grep -q ESTABLISHED
@@ -143,7 +128,6 @@ while true; do
   sleep $KEEPALIVE
   settings put global adb_enabled 1 2>/dev/null
   settings put global adb_allowed_connection_time 0 2>/dev/null
-  [ "$ADB_FIREWALL" = "1" ] && apply_firewall
   if ! netstat -lnt 2>/dev/null | grep -q ":$ADB_PORT "; then
     setprop service.adb.tcp.port $ADB_PORT
     stop adbd; start adbd
