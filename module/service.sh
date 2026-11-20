@@ -5,11 +5,13 @@ SVC=$PKG/.LockService
 
 # ---------- 读配置 ----------
 CONF=$MODDIR/config.conf
-getconf() { grep -E "^$1=" "$CONF" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d ' \r'; }
+getconf() { grep -E "^$1=" "$CONF" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r' | sed 's/^ *//; s/ *$//'; }
 LOCKSCREEN=$(getconf LOCKSCREEN); [ -z "$LOCKSCREEN" ] && LOCKSCREEN=1
 USB_TETHER=$(getconf USB_TETHER); [ -z "$USB_TETHER" ] && USB_TETHER=0
 ADB_PORT=$(getconf ADB_PORT);     [ -z "$ADB_PORT" ] && ADB_PORT=5555
 KEEPALIVE=$(getconf KEEPALIVE);   [ -z "$KEEPALIVE" ] && KEEPALIVE=60
+ADB_FIREWALL=$(getconf ADB_FIREWALL); [ -z "$ADB_FIREWALL" ] && ADB_FIREWALL=1
+ADB_ALLOWED_CIDRS=$(getconf ADB_ALLOWED_CIDRS); [ -z "$ADB_ALLOWED_CIDRS" ] && ADB_ALLOWED_CIDRS="192.168.2.0/24 127.0.0.1/32"
 
 # ---------- ADB 基础 ----------
 settings put global adb_enabled 1
@@ -39,6 +41,27 @@ else
   am force-stop $PKG 2>/dev/null
 fi
 
+# ---------- 端口访问控制(iptables 白名单) ----------
+apply_firewall() {
+  iptables -D INPUT -p tcp --dport $ADB_PORT -j REMOTEADB 2>/dev/null
+  iptables -F REMOTEADB 2>/dev/null
+  iptables -X REMOTEADB 2>/dev/null
+  iptables -N REMOTEADB 2>/dev/null || return 0
+  iptables -A REMOTEADB -i lo -j ACCEPT
+  iptables -A REMOTEADB -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  OK=0
+  for c in $ADB_ALLOWED_CIDRS; do
+    iptables -A REMOTEADB -s "$c" -j ACCEPT 2>/dev/null && OK=$((OK+1))
+  done
+  if [ $OK -eq 0 ]; then
+    # 白名单解析失败, 宁可不限制也不要自锁
+    iptables -F REMOTEADB 2>/dev/null; iptables -X REMOTEADB 2>/dev/null
+    return 0
+  fi
+  iptables -A REMOTEADB -j DROP
+  iptables -I INPUT -p tcp --dport $ADB_PORT -j REMOTEADB
+}
+
 # ---------- USB 网络共享 ----------
 if [ "$USB_TETHER" = "1" ]; then
   sleep 8   # 等系统 USB 服务就绪
@@ -57,6 +80,8 @@ if [ "$USB_TETHER" = "1" ]; then
   done
   ) &
 fi
+
+[ "$ADB_FIREWALL" = "1" ] && { sleep 10; apply_firewall; }
 
 adb_connected() {
   netstat -ant 2>/dev/null | grep ":$ADB_PORT " | grep -q ESTABLISHED
@@ -98,6 +123,7 @@ while true; do
   sleep $KEEPALIVE
   settings put global adb_enabled 1 2>/dev/null
   settings put global adb_allowed_connection_time 0 2>/dev/null
+  [ "$ADB_FIREWALL" = "1" ] && apply_firewall
   if ! netstat -lnt 2>/dev/null | grep -q ":$ADB_PORT "; then
     setprop service.adb.tcp.port $ADB_PORT
     stop adbd; start adbd
