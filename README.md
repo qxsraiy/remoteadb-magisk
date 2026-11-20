@@ -16,6 +16,8 @@
 
 ## 刷入时的音量键菜单
 
+> v4.5+ 会**继承上次安装的开关值**作为菜单默认(首次安装才是 0)。注意 Magisk 机制: 刷入时写入的是"待安装"目录,重启后才生效,所以**刷完模块后想改开关,要改 /data/adb/modules/remoteadb/config.conf 再重启一次**。
+
 刷入模块后会出现两个选择,每个都有 10 秒窗口:
 
 | 提示 | 音量上 | 音量下 | 10 秒默认 |
@@ -32,11 +34,29 @@
 | 开关 | 默认 | 说明 |
 |---|---|---|
 | `LOCKSCREEN` | 1 | 1=自绘锁屏接管;0=不碰系统锁屏,恢复系统原本行为 |
-| `USB_TETHER` | 0 | 1=开机自动 USB 网络共享(RNDIS) |
+| `USB_TETHER` | 0 | 1=开机自动 USB 网络共享(RNDIS), 由特权 app 调 TetheringManager 实现 |
 | `ADB_PORT` | 5555 | 无线调试端口,改了要同步改转发规则 |
 | `ADB_FIREWALL` | 1 | 1=用 iptables 白名单限制来源(强烈建议开) |
 | `ADB_ALLOWED_CIDRS` | `192.168.2.0/24 127.0.0.1/32` | 允许访问 ADB 端口的网段,空格分隔 |
 | `KEEPALIVE` | 60 | adbd 保活巡检间隔(秒) |
+
+## USB 网络共享实现说明
+
+Android 没有公开的 shell 命令能可靠开启 USB 共享(`cmd tethering start usb` 在 ColorOS 上返回 *No shell command implementation*)。本模块的做法:
+
+1. 守护脚本把 USB 功能切到 `rndis,adb`(优先 `svc usb setFunctions`,回退 `setprop sys.usb.config`,带 8 次重试防 ROM 抢回)
+2. 广播 `com.fujiang.remotelock.USB_TETHER` 给特权 app,由它调用公开 API `TetheringManager.startTethering(TETHERING_USB)`
+3. 60 秒巡检,掉线自动重开
+
+实测 ColorOS 15: `rndis0` 进入 `TetheredState`,对端(电脑/路由器)自动获得 `192.168.233.x` 地址。
+
+## 安装后如果锁屏/共享没更新?
+
+priv-app 升级后 PackageManager 可能继续用旧的解析缓存(表现为 dumpsys package 里 versionCode 还是旧值、新功能不出现)。模块 v4.6+ 会在安装时自动执行 `rm -rf /data/system/package_cache/*`;如仍不生效,手动清一次再重启:
+
+```bash
+su -c 'rm -rf /data/system/package_cache/*; reboot'
+```
 
 ## 取出密钥连接
 

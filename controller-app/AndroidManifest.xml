@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.fujiang.remotelock" android:versionCode="14" android:versionName="3.6">
+    package="com.fujiang.remotelock" android:versionCode="15" android:versionName="4.3">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.STATUS_BAR"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.TETHER_PRIVILEGED"/>
     <application
         android:label="RemoteLock"
         android:allowBackup="false">
@@ -19,6 +20,11 @@
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".TetherReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="com.fujiang.remotelock.USB_TETHER"/>
             </intent-filter>
         </receiver>
         <receiver android:name=".CmdReceiver" android:exported="true">

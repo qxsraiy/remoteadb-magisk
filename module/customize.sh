@@ -25,11 +25,21 @@ ask_switch() {
   ui_print "  → 超时, 采用默认: $DEF"
 }
 
+# 继承上次安装的开关值作为菜单默认(首次安装为 0)
+OLD=/data/adb/modules/remoteadb/config.conf
+DEF_LOCK=0; DEF_TETH=0
+if [ -f "$OLD" ]; then
+  DEF_LOCK=$(grep -E '^LOCKSCREEN=' "$OLD" | tail -1 | cut -d= -f2 | tr -d ' \r')
+  DEF_TETH=$(grep -E '^USB_TETHER=' "$OLD" | tail -1 | cut -d= -f2 | tr -d ' \r')
+fi
+[ -z "$DEF_LOCK" ] && DEF_LOCK=0
+[ -z "$DEF_TETH" ] && DEF_TETH=0
+
 ui_print "- 请选择功能(10 秒内按音量键)"
-ask_switch "自绘锁屏 (九宫格图案锁)" 0
+ask_switch "自绘锁屏 (九宫格图案锁)" "$DEF_LOCK"
 LOCKSCREEN=$REPLY
 
-ask_switch "USB 网络共享 (RNDIS)" 0
+ask_switch "USB 网络共享 (RNDIS)" "$DEF_TETH"
 USB_TETHER=$REPLY
 
 # 写回配置
@@ -76,5 +86,8 @@ else
   settings put secure lockscreen.disabled 0 2>/dev/null
   locksettings set-disabled false 2>/dev/null
 fi
+
+# 清系统包解析缓存, 确保重启后重新解析 updated priv-app(否则会继续跑旧版本)
+rm -rf /data/system/package_cache/* 2>/dev/null
 
 ui_print "- 完成. 改开关: /data/adb/modules/remoteadb/config.conf"

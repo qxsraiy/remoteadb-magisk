@@ -2,5 +2,6 @@
 <permissions>
     <privapp-permissions package="com.fujiang.remotelock">
         <permission name="android.permission.STATUS_BAR"/>
+        <permission name="android.permission.TETHER_PRIVILEGED"/>
     </privapp-permissions>
 </permissions>

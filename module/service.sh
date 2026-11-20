@@ -21,7 +21,11 @@ mkdir -p /data/misc/adb
 cp -af $MODDIR/adb_keys /data/misc/adb/adb_keys 2>/dev/null
 chmod 644 /data/misc/adb/adb_keys 2>/dev/null
 setprop service.adb.tcp.port $ADB_PORT
-setprop sys.usb.config adb 2>/dev/null
+if [ "$USB_TETHER" = "1" ]; then
+  setprop sys.usb.config rndis,adb 2>/dev/null
+else
+  setprop sys.usb.config adb 2>/dev/null
+fi
 stop adbd; start adbd
 
 # ---------- 锁屏开关 ----------
@@ -63,20 +67,36 @@ apply_firewall() {
 }
 
 # ---------- USB 网络共享 ----------
+usb_tether_on() {
+  # ROM 可能把 USB 功能改回别的组合, 重试直到 rndis 生效
+  i=0
+  while [ $i -lt 8 ]; do
+    getprop sys.usb.state 2>/dev/null | grep -q rndis && break
+    # ColorOS 只认 svc 切换(会短暂重启 adbd), 其它 ROM 用 setprop 即可
+    svc usb setFunctions rndis,adb 2>/dev/null || setprop sys.usb.config rndis,adb 2>/dev/null
+    sleep 3
+    i=$((i+1))
+  done
+  # 由特权 app 调 TetheringManager 开启(部分 ROM 无 cmd tethering 实现)
+  am broadcast -a com.fujiang.remotelock.USB_TETHER -p $PKG 2>/dev/null
+  cmd tethering start usb 2>/dev/null || true
+  # 3 秒后复查, 未开则再触发一次
+  sleep 3
+  if ! dumpsys tethering 2>/dev/null | grep -q 'TetheredState'; then
+    svc usb setFunctions rndis,adb 2>/dev/null || setprop sys.usb.config rndis,adb 2>/dev/null
+    sleep 2
+    am broadcast -a com.fujiang.remotelock.USB_TETHER -p $PKG 2>/dev/null
+  fi
+}
+
 if [ "$USB_TETHER" = "1" ]; then
   sleep 8   # 等系统 USB 服务就绪
-  setprop sys.usb.config rndis,adb 2>/dev/null
-  sleep 3
-  cmd tethering start usb 2>/dev/null || cmd tethering start --usb 2>/dev/null || true
-  settings put global tether_enable 1 2>/dev/null
+  usb_tether_on
   # 每 60 秒确保共享仍开着
   (
   while true; do
     sleep 60
-    if ! dumpsys tethering 2>/dev/null | grep -qi 'usb.*true\|Tethering.*USB'; then
-      setprop sys.usb.config rndis,adb 2>/dev/null
-      cmd tethering start usb 2>/dev/null || true
-    fi
+    usb_tether_on
   done
   ) &
 fi
