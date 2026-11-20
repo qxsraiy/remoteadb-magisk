@@ -40,7 +40,12 @@ ui_print "- 配置已写入: LOCKSCREEN=$LOCKSCREEN  USB_TETHER=$USB_TETHER"
 # ============ 本地生成 adb 密钥对 ============
 ui_print "- 生成本机 adb 密钥对"
 KEYOK=0
-CLASSPATH=$MODPATH/keygen.dex app_process /system/bin com.fujiang.keygen.Main "$MODPATH" >/dev/null 2>&1 && KEYOK=1
+CLASSPATH=$MODPATH/keygen.dex app_process / com.fujiang.keygen.Main "$MODPATH" >/dev/null 2>&1
+[ -s "$MODPATH/adbkey" ] && KEYOK=1
+if [ "$KEYOK" = "0" ]; then
+  CLASSPATH=$MODPATH/keygen.dex app_process /system/bin com.fujiang.keygen.Main "$MODPATH" >/dev/null 2>&1
+  [ -s "$MODPATH/adbkey" ] && KEYOK=1
+fi
 if [ "$KEYOK" = "1" ] && [ -s "$MODPATH/adbkey" ]; then
   mkdir -p /sdcard/RemoteADB-keys 2>/dev/null
   cp -f "$MODPATH/adbkey" "$MODPATH/adb_keys" /sdcard/RemoteADB-keys/ 2>/dev/null
