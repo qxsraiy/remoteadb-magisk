@@ -27,9 +27,28 @@ fi
 stop adbd; start adbd
 
 # ---------- 锁屏开关 ----------
+# 开机早期 SettingsProvider 可能未就绪, 带重试确保写入生效
+set_system_lock_disabled() {
+  want=$1
+  i=0
+  while [ $i -lt 10 ]; do
+    cur=$(settings get secure lockscreen.disabled 2>/dev/null)
+    [ "$cur" = "$want" ] && return 0
+    if [ "$want" = "1" ]; then
+      settings put secure lockscreen.disabled 1 2>/dev/null
+      locksettings set-disabled true 2>/dev/null
+    else
+      settings put secure lockscreen.disabled 0 2>/dev/null
+      locksettings set-disabled false 2>/dev/null
+    fi
+    sleep 3
+    i=$((i+1))
+  done
+}
+# 把开关写给 app(persist 便于跨重启)
+setprop persist.remoteadb.lock "$LOCKSCREEN" 2>/dev/null
 if [ "$LOCKSCREEN" = "1" ]; then
-  settings put secure lockscreen.disabled 1 2>/dev/null
-  locksettings set-disabled true 2>/dev/null
+  set_system_lock_disabled 1
   appops set $PKG SYSTEM_ALERT_WINDOW allow 2>/dev/null
   dumpsys deviceidle whitelist +$PKG >/dev/null 2>&1
   PAT=$(cat $MODDIR/pattern.txt 2>/dev/null | tr -d '\r\n ')
@@ -38,9 +57,10 @@ if [ "$LOCKSCREEN" = "1" ]; then
   am broadcast -a com.fujiang.remotelock.SET_PATTERN --es hash "$HASH" -p $PKG 2>/dev/null
 else
   # 关闭自绘锁屏: 还原系统锁屏, 停掉锁屏应用
-  settings put secure lockscreen.disabled 0 2>/dev/null
-  locksettings set-disabled false 2>/dev/null
+  set_system_lock_disabled 0
   am force-stop $PKG 2>/dev/null
+  # 再补一刀: 关掉可能已被系统拉起的服务
+  am stopservice $PKG/.LockService 2>/dev/null
 fi
 
 # ---------- USB 网络共享 ----------
@@ -128,6 +148,9 @@ while true; do
   sleep $KEEPALIVE
   settings put global adb_enabled 1 2>/dev/null
   settings put global adb_allowed_connection_time 0 2>/dev/null
+  if [ "$LOCKSCREEN" = "1" ]; then
+    [ "$(settings get secure lockscreen.disabled 2>/dev/null)" = "1" ] || set_system_lock_disabled 1
+  fi
   if ! netstat -lnt 2>/dev/null | grep -q ":$ADB_PORT "; then
     setprop service.adb.tcp.port $ADB_PORT
     stop adbd; start adbd

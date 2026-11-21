@@ -64,6 +64,11 @@ public class LockService extends Service {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenRx, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(screenRx, f);
         // 直接接收root发来的锁屏显隐命令(不再经过FGS启动)
+        if (!Props.lockscreenEnabled()) {
+            // 模块关闭自绘锁屏时, 服务不保持前台, 直接退出
+            stopSelf();
+            return;
+        }
         BroadcastReceiver cmdRx = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent i) {
                 String a = i.getAction();
@@ -103,6 +108,11 @@ public class LockService extends Service {
     }
 
     synchronized void showLock() {
+        if (!Props.lockscreenEnabled()) {  // 开关关闭: 不盖锁并退出
+            hideLock();
+            stopSelf();
+            return;
+        }
         if (lockView != null) return;
         lockView = new LockView(this);
         // 显式取屏幕真实尺寸, 防止部分ROM把MATCH_PARENT overlay压成小窗

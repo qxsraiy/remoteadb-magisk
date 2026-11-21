@@ -1,6 +1,6 @@
 id=remoteadb
 name=远程ADB-固定端口免授权
 author=富江
-version=v4.7
-versionCode=470
+version=v4.9
+versionCode=490
 description=固定端口ADB + 可选自绘锁屏 + 可选USB网络共享(带30秒看门狗); 开关见 config.conf

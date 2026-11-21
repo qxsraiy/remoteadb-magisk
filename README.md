@@ -84,6 +84,10 @@ adb connect <手机IP>:5555
 ```
 
 > `LOCKSCREEN=0` 时图案不生效。
+>
+> 开关实现: `service.sh` 把开关值写入属性 `persist.remoteadb.lock`,锁屏 app 每次盖锁前读取该属性;
+> 关闭时 app 会**自行退出**(不再有常驻进程),同时恢复系统锁屏(`lockscreen.disabled=0`)。
+> 改完 `config.conf` **必须重启**才生效(Magisk 刷入时写的是待安装目录,重启后才进入生效目录)。
 
 ## 安全提示
 
